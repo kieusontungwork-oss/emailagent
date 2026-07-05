@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EmailAgentV2 - Architecture Deck</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --primary: #3b82f6;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #10b981;
+        }
+        body {
+            margin: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .header {
+            width: 100%;
+            padding: 2rem 0;
+            text-align: center;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-bottom: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            color: var(--primary);
+        }
+        .header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            padding: 2rem;
+            flex-grow: 1;
+        }
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 1rem;
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover {
+            color: var(--text-main);
+            background: #334155;
+        }
+        .tab-btn.active {
+            color: var(--primary);
+            background: #1e293b;
+            box-shadow: 0 0 0 1px #334155;
+        }
+        .slide {
+            display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+        .slide.active {
+            display: block;
+        }
+        .card {
+            background: var(--surface-color);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .card h2 {
+            margin-top: 0;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .tag {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--accent);
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        ul {
+            line-height: 1.7;
+            color: #cbd5e1;
+        }
+        code {
+            background: #0f172a;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            color: #e2e8f0;
+            font-family: monospace;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .mermaid-wrapper {
+            background: rgba(15, 23, 42, 0.5);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            text-align: center;
+            border: 1px solid #334155;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>EmailAgentV2</h1>
+        <p>Technical Architecture & Solution Design</p>
+    </div>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="showSlide('slide-paradigm', this)">1. Paradigm</button>
+            <button class="tab-btn" onclick="showSlide('slide-structure', this)">2. System Structure</button>
+            <button class="tab-btn" onclick="showSlide('slide-invariants', this)">3. Core Decisions</button>
+            <button class="tab-btn" onclick="showSlide('slide-stack', this)">4. Tech Stack</button>
+        </div>
+
+        <!-- Slide 1: Paradigm -->
+        <div id="slide-paradigm" class="slide active">
+            <div class="card">
+                <span class="tag">Design Paradigm</span>
+                <h2>Event-Driven, Modular Orchestration</h2>
+                <p>The system is built around <strong>n8n</strong> acting as a stateless "Front Desk" coordinator.</p>
+                <ul>
+                    <li><strong>Event-Driven:</strong> Pipeline awakens strictly on incoming Gmail triggers.</li>
+                    <li><strong>Modular:</strong> The main workflow does NO heavy lifting. It delegates extraction, querying, and formatting to isolated sub-workflows.</li>
+                    <li><strong>Stateless:</strong> The orchestrator holds no memory. All state, auditing, and idempotency relies on an external single-source-of-truth.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 2: Structure -->
+        <div id="slide-structure" class="slide">
+            <div class="card">
+                <h2>Pipeline Topology</h2>
+                <p>A visual representation of the "Front Desk and Rooms" pattern.</p>
+                <div class="mermaid-wrapper">
+                    <!-- Added pre tag for proper mermaid rendering -->
+                    <pre class="mermaid" id="architecture-diagram">
+flowchart TD
+    Gmail[Gmail Trigger] -->|Email Event| Controller[Controller Workflow]
+    
+    subgraph Modular Sub-workflows
+        Controller -->|Passes Attachments| DataPrep[Data Prep]
+        DataPrep --> Controller
+        Controller -->|Passes Text| LLM[LLM Extraction]
+        LLM --> Controller
+        Controller -->|Passes IDs| DB[Database & Report]
+        DB --> Controller
+    end
+    
+    Controller -.->|On Any Error| Mailroom[Mailroom Error Handler]
+    Mailroom --> AdminAlert[Admin Email Alert]
+    Mailroom -.-> UserError[User Error Reply]
+    
+    Controller -->|Success| UserReply[Send Success Reply]
+    
+    DB <-->|Domain Data & Idempotency| Postgres[(PostgreSQL)]
+    LLM <-->|Air-gapped Inference| LMStudio[(LM Studio)]
+                    </pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Slide 3: Invariants -->
+        <div id="slide-invariants" class="slide">
+            <div class="card">
+                <h2>The 3 Architectural Invariants</h2>
+                <p>These are the non-negotiable rules for anyone building or extending this system.</p>
+                
+                <h3 style="color:#60a5fa; margin-top:1.5rem;">1. The Pure Orchestrator (State Model)</h3>
+                <ul>
+                    <li><strong>Rule:</strong> PostgreSQL is the absolute source of truth for both domain data AND operational state (<code>request_logs</code>).</li>
+                    <li><strong>Why:</strong> Prevents state fragmentation. Redis is banned from holding persistent idempotency logs.</li>
+                </ul>
+
+                <h3 style="color:#60a5fa; margin-top:1.5rem;">2. The "Mailroom" Error Boundary</h3>
+                <ul>
+                    <li><strong>Rule:</strong> No sub-workflow is allowed to email the user or admin directly. ALL errors are routed back to the Controller and handed to a universal "Mailroom" sub-workflow.</li>
+                    <li><strong>Why:</strong> Prevents spaghetti logic and ensures consistent error formatting.</li>
+                </ul>
+
+                <h3 style="color:#60a5fa; margin-top:1.5rem;">3. Git-Backed Deployments</h3>
+                <ul>
+                    <li><strong>Rule:</strong> n8n workflow JSON files must be treated as Infrastructure-as-Code and deployed to production via CI/CD.</li>
+                    <li><strong>Why:</strong> Prevents unaudited "UI click" changes in the secure, air-gapped production environment.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Slide 4: Stack -->
+        <div id="slide-stack" class="slide">
+            <div class="card">
+                <h2>Approved Tech Stack</h2>
+                <ul>
+                    <li><strong>Orchestration:</strong> n8n (Queue Mode)</li>
+                    <li><strong>State & Queuing:</strong> Redis 7.x (Queues ONLY)</li>
+                    <li><strong>Database & Audit:</strong> PostgreSQL 16.x</li>
+                    <li><strong>AI Inference:</strong> LM Studio (Air-gapped local subnet)</li>
+                    <li><strong>Vision Model:</strong> Llama-3.2-Vision (or Qwen2-VL)</li>
+                    <li><strong>Secrets:</strong> HashiCorp Vault (Runtime injection)</li>
+                    <li><strong>Excel Generation:</strong> Python 3.12+ (<code>openpyxl</code>)</li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Use modern Mermaid ES module -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ 
+            startOnLoad: false, 
+            theme: 'dark',
+            fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+            flowchart: { curve: 'linear' }
+        });
+
+        window.showSlide = async function(slideId, btnElement) {
+            // Hide all slides
+            document.querySelectorAll('.slide').forEach(slide => {
+                slide.classList.remove('active');
+            });
+            // Remove active class from buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected slide
+            document.getElementById(slideId).classList.add('active');
+            // Add active class to clicked button
+            btnElement.classList.add('active');
+
+            // Render mermaid dynamically only when the slide is visible
+            if (slideId === 'slide-structure') {
+                const el = document.getElementById('architecture-diagram');
+                if (!el.getAttribute('data-processed')) {
+                    // Extract the text content to render
+                    const graphDefinition = el.textContent;
+                    try {
+                        const { svg } = await mermaid.render('graphDiv', graphDefinition);
+                        el.innerHTML = svg;
+                        el.setAttribute('data-processed', 'true');
+                    } catch (e) {
+                        console.error('Mermaid rendering failed', e);
+                    }
+                }
+            }
+        };
+    </script>
+</body>
+</html>
