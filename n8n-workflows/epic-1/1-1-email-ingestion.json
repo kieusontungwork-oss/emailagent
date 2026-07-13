@@ -1,0 +1,242 @@
+{
+  "name": "1.1 Email Ingestion & Attachment Validation",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "postProcessAction": "nothing",
+        "format": "resolved",
+        "options": {}
+      },
+      "id": "gmail-trigger",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [ 0, 0 ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-auto-responder",
+              "leftValue": "={{ $json.headers['x-autoreply'] }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            },
+            {
+              "id": "check-spf-dmarc",
+              "leftValue": "={{ $json.headers['authentication-results'] }}",
+              "rightValue": "pass",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-auth",
+      "name": "Filter SPF/DMARC & Auto-responders",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [ 200, 0 ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO request_logs (message_id, sender_email, status) VALUES ('{{ $json.messageId }}', '{{ $json.from.value[0].address }}', 'RECEIVED') RETURNING id;",
+        "options": {}
+      },
+      "id": "postgres-insert",
+      "name": "Postgres: Insert Idempotency Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [ 400, 0 ],
+      "continueOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const attachments = $input.item.binary || {};\nlet validPdfs = {};\nlet totalSize = 0;\nlet totalPages = 0;\n\n// We cannot reliably count pages in plain JS without a library, \n// so we assume page count is passed in metadata or we count it in an external service.\n// For now, we mock page count based on size for validation logic structure.\n\nfor (const key of Object.keys(attachments)) {\n    const file = attachments[key];\n    if (file.mimeType === 'application/pdf') {\n        validPdfs[key] = file;\n        // file size might be in file.fileSize or we might need to calculate from base64 length\n        // mocking base64 decode length roughly\n        const sizeBytes = file.data.length * 0.75;\n        totalSize += sizeBytes;\n        totalPages += Math.ceil(sizeBytes / 20000); // rough mock\n    }\n}\n\nreturn {\n    json: {\n        ...$input.item.json,\n        validationStats: {\n            totalSizeBytes: totalSize,\n            totalPages: totalPages,\n            pdfCount: Object.keys(validPdfs).length\n        }\n    },\n    binary: validPdfs\n};"
+      },
+      "id": "code-filter-attachments",
+      "name": "Filter PDFs and Calculate Size",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [ 600, 0 ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-max-size",
+              "leftValue": "={{ $json.validationStats.totalSizeBytes }}",
+              "rightValue": 1048576,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            },
+            {
+              "id": "check-max-pages",
+              "leftValue": "={{ $json.validationStats.totalPages }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            },
+            {
+              "id": "check-min-pdfs",
+              "leftValue": "={{ $json.validationStats.pdfCount }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-limits",
+      "name": "Validate Limits",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [ 800, 0 ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "message": "Your request could not be processed because the attached PDFs exceed the maximum limit of 1MB or 50 pages total, or no valid PDFs were found.",
+        "subject": "Re: {{ $json.subject }} - Validation Error",
+        "toEmail": "={{ $json.from.value[0].address }}",
+        "options": {}
+      },
+      "id": "gmail-error-reply",
+      "name": "Send Error Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [ 1000, 100 ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE request_logs SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP WHERE message_id = '{{ $json.messageId }}';",
+        "options": {}
+      },
+      "id": "postgres-update-rejected",
+      "name": "Postgres: Update Status REJECTED",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [ 1200, 100 ]
+    },
+    {
+      "parameters": {},
+      "id": "noop-success",
+      "name": "Pass to Next Stage",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [ 1000, -100 ]
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter SPF/DMARC & Auto-responders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter SPF/DMARC & Auto-responders": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Insert Idempotency Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: Insert Idempotency Log": {
+      "main": [
+        [
+          {
+            "node": "Filter PDFs and Calculate Size",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter PDFs and Calculate Size": {
+      "main": [
+        [
+          {
+            "node": "Validate Limits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Limits": {
+      "main": [
+        [
+          {
+            "node": "Pass to Next Stage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Error Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Error Reply": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Update Status REJECTED",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {}
+}
