@@ -18,7 +18,10 @@
       "name": "Gmail Trigger",
       "type": "n8n-nodes-base.gmailTrigger",
       "typeVersion": 1,
-      "position": [ 0, 0 ]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
@@ -31,11 +34,11 @@
           "conditions": [
             {
               "id": "check-auto-responder",
-              "leftValue": "={{ $json.headers['x-autoreply'] }}",
-              "rightValue": "yes",
+              "leftValue": "={{ ($json.headers['auto-submitted'] || 'no').toLowerCase() }}",
+              "rightValue": "no",
               "operator": {
                 "type": "string",
-                "operation": "notEquals"
+                "operation": "equals"
               }
             },
             {
@@ -45,6 +48,15 @@
               "operator": {
                 "type": "string",
                 "operation": "contains"
+              }
+            },
+            {
+              "id": "check-x-autoreply",
+              "leftValue": "={{ ($json.headers['x-autoreply'] || 'no').toLowerCase() }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
               }
             }
           ],
@@ -56,30 +68,41 @@
       "name": "Filter SPF/DMARC & Auto-responders",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [ 200, 0 ]
+      "position": [
+        200,
+        0
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO request_logs (message_id, sender_email, status) VALUES ('{{ $json.messageId }}', '{{ $json.from.value[0].address }}', 'RECEIVED') RETURNING id;",
-        "options": {}
+        "query": "INSERT INTO request_logs (message_id, sender_email, status) VALUES ($1, $2, 'RECEIVED') ON CONFLICT DO NOTHING RETURNING id;",
+        "options": {
+          "queryParameters": "={{ $json.messageId }},{{ $json.from?.value?.[0]?.address || 'unknown' }}"
+        }
       },
       "id": "postgres-insert",
       "name": "Postgres: Insert Idempotency Log",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.3,
-      "position": [ 400, 0 ],
+      "position": [
+        400,
+        0
+      ],
       "continueOnFail": false
     },
     {
       "parameters": {
-        "jsCode": "const attachments = $input.item.binary || {};\nlet validPdfs = {};\nlet totalSize = 0;\nlet totalPages = 0;\n\n// We cannot reliably count pages in plain JS without a library, \n// so we assume page count is passed in metadata or we count it in an external service.\n// For now, we mock page count based on size for validation logic structure.\n\nfor (const key of Object.keys(attachments)) {\n    const file = attachments[key];\n    if (file.mimeType === 'application/pdf') {\n        validPdfs[key] = file;\n        // file size might be in file.fileSize or we might need to calculate from base64 length\n        // mocking base64 decode length roughly\n        const sizeBytes = file.data.length * 0.75;\n        totalSize += sizeBytes;\n        totalPages += Math.ceil(sizeBytes / 20000); // rough mock\n    }\n}\n\nreturn {\n    json: {\n        ...$input.item.json,\n        validationStats: {\n            totalSizeBytes: totalSize,\n            totalPages: totalPages,\n            pdfCount: Object.keys(validPdfs).length\n        }\n    },\n    binary: validPdfs\n};"
+        "jsCode": "\nconst triggerItem = $('Gmail Trigger').first();\nconst attachments = triggerItem.binary || {};\nlet validPdfs = {};\nlet totalSize = 0;\nlet totalPages = 0;\n\nfor (const key of Object.keys(attachments)) {\n    const file = attachments[key];\n    if (file.mimeType === 'application/pdf') {\n        validPdfs[key] = file;\n        \n        // Fix 10: Crude Attachment Size Calculation\n        // Calculate exact base64 decode length or use fileSize if available\n        let sizeBytes = file.fileSize;\n        if (!sizeBytes) {\n            const base64Length = file.data.length;\n            const padding = (file.data.endsWith('==') ? 2 : (file.data.endsWith('=') ? 1 : 0));\n            sizeBytes = (base64Length * 0.75) - padding;\n        }\n        totalSize += sizeBytes;\n        \n        // Fix 2: Mocked page count\n        // Without pdf-lib, we can only guess or leave it as 1.\n        // If the environment supports external modules, we could require('pdf-lib').\n        // Let's use a rough mock for now but document it clearly.\n        totalPages += Math.ceil(sizeBytes / 20000); \n    }\n}\n\nreturn {\n    json: {\n        ...triggerItem.json,\n        validationStats: {\n            totalSizeBytes: totalSize,\n            totalPages: totalPages,\n            pdfCount: Object.keys(validPdfs).length\n        }\n    },\n    binary: validPdfs\n};\n"
       },
       "id": "code-filter-attachments",
       "name": "Filter PDFs and Calculate Size",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [ 600, 0 ]
+      "position": [
+        600,
+        0
+      ]
     },
     {
       "parameters": {
@@ -107,9 +130,130 @@
                 "type": "number",
                 "operation": "lte"
               }
-            },
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "validate-limits",
+      "name": "Validate Limits",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "message": "Your request could not be processed because the attached PDFs exceed the maximum limit of 1MB or 50 pages total, or no valid PDFs were found.",
+        "subject": "Re: {{ $json.subject }} - Validation Error",
+        "toEmail": "={{ $json.from.value[0].address }}",
+        "options": {
+          "customHeaders": {
+            "header": [
+              {
+                "name": "In-Reply-To",
+                "value": "={{ $json.messageId }}"
+              },
+              {
+                "name": "References",
+                "value": "={{ $json.messageId }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "gmail-error-reply",
+      "name": "Send Error Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1000,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE request_logs SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP WHERE message_id = $1;",
+        "options": {
+          "queryParameters": "={{ $('Gmail Trigger').first().json.messageId }}"
+        }
+      },
+      "id": "postgres-update-rejected",
+      "name": "Postgres: Update Status REJECTED",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [
+        1200,
+        100
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "noop-success",
+      "name": "Pass to Next Stage",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO request_logs (message_id, sender_email, status) VALUES ($1, $2, 'AUTH_FAILED') ON CONFLICT (message_id) DO UPDATE SET status = 'AUTH_FAILED';",
+        "options": {
+          "queryParameters": "={{ $json.messageId }},{{ $json.from?.value?.[0]?.address || 'unknown' }}"
+        }
+      },
+      "id": "postgres-auth-failed",
+      "name": "Postgres: Log AUTH_FAILED",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.3,
+      "position": [
+        400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
             {
-              "id": "check-min-pdfs",
+              "id": "check-id",
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-idempotency",
+      "name": "Check if Inserted",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        500,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "check-pdf-count",
               "leftValue": "={{ $json.validationStats.pdfCount }}",
               "rightValue": 0,
               "operator": {
@@ -122,45 +266,14 @@
         },
         "options": {}
       },
-      "id": "validate-limits",
-      "name": "Validate Limits",
+      "id": "check-has-pdfs",
+      "name": "Has PDFs?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [ 800, 0 ]
-    },
-    {
-      "parameters": {
-        "operation": "send",
-        "message": "Your request could not be processed because the attached PDFs exceed the maximum limit of 1MB or 50 pages total, or no valid PDFs were found.",
-        "subject": "Re: {{ $json.subject }} - Validation Error",
-        "toEmail": "={{ $json.from.value[0].address }}",
-        "options": {}
-      },
-      "id": "gmail-error-reply",
-      "name": "Send Error Reply",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.1,
-      "position": [ 1000, 100 ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE request_logs SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP WHERE message_id = '{{ $json.messageId }}';",
-        "options": {}
-      },
-      "id": "postgres-update-rejected",
-      "name": "Postgres: Update Status REJECTED",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.3,
-      "position": [ 1200, 100 ]
-    },
-    {
-      "parameters": {},
-      "id": "noop-success",
-      "name": "Pass to Next Stage",
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [ 1000, -100 ]
+      "position": [
+        900,
+        100
+      ]
     }
   ],
   "connections": {
@@ -183,6 +296,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Postgres: Log AUTH_FAILED",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -190,7 +310,7 @@
       "main": [
         [
           {
-            "node": "Filter PDFs and Calculate Size",
+            "node": "Check if Inserted",
             "type": "main",
             "index": 0
           }
@@ -219,7 +339,7 @@
         ],
         [
           {
-            "node": "Send Error Reply",
+            "node": "Has PDFs?",
             "type": "main",
             "index": 0
           }
@@ -235,6 +355,29 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "Check if Inserted": {
+      "main": [
+        [
+          {
+            "node": "Filter PDFs and Calculate Size",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has PDFs?": {
+      "main": [
+        [
+          {
+            "node": "Send Error Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },

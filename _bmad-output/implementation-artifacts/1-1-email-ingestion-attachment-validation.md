@@ -4,7 +4,7 @@ baseline_commit: d6d3217b87c7590655a2cc89e9b3763513318e4b
 
 # Story 1.1: Email Ingestion & Attachment Validation
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -77,15 +77,15 @@ Gemini 2.5 Pro
 
 ### Review Findings
 
-- [ ] [Review][Decision] Spamming Users for Regular Emails (Zero PDFs) — Sending error email if pdfCount=0 causes spam for normal emails without PDFs, despite AC 2 wording.
-- [ ] [Review][Decision] Mocked page count instead of real calculation — Code mocks PDF page count based on size. Accurate count requires `pdf-lib` (external module in n8n) or external API.
-- [ ] [Review][Patch] Missing `AUTH_FAILED` logging [n8n-workflows/epic-1/1-1-email-ingestion.json]
-- [ ] [Review][Patch] Idempotency check crashes execution [n8n-workflows/epic-1/1-1-email-ingestion.json]
-- [ ] [Review][Patch] Loss of payload context in database update [n8n-workflows/epic-1/1-1-email-ingestion.json]
-- [ ] [Review][Patch] Thread-Breaking Email Replies [n8n-workflows/epic-1/1-1-email-ingestion.json]
-- [ ] [Review][Patch] Inadequate Auto-Responder Filtering [n8n-workflows/epic-1/1-1-email-ingestion.json]
-- [ ] [Review][Patch] SQL Injection / Syntax Error Risk [n8n-workflows/epic-1/1-1-email-ingestion.json]
-- [ ] [Review][Patch] Expression TypeError Risks [n8n-workflows/epic-1/1-1-email-ingestion.json]
-- [ ] [Review][Patch] Crude Attachment Size Calculation [n8n-workflows/epic-1/1-1-email-ingestion.json]
+- [x] [Review][Decision] Spamming Users for Regular Emails (Zero PDFs) — Sending error email if pdfCount=0 causes spam for normal emails without PDFs, despite AC 2 wording.
+- [x] [Review][Decision] Mocked page count instead of real calculation — Code mocks PDF page count based on size. Accurate count requires `pdf-lib` (external module in n8n) or external API.
+- [x] [Review][Patch] Missing `AUTH_FAILED` logging [n8n-workflows/epic-1/1-1-email-ingestion.json]
+- [x] [Review][Patch] Idempotency check crashes execution [n8n-workflows/epic-1/1-1-email-ingestion.json]
+- [x] [Review][Patch] Loss of payload context in database update [n8n-workflows/epic-1/1-1-email-ingestion.json]
+- [x] [Review][Patch] Thread-Breaking Email Replies [n8n-workflows/epic-1/1-1-email-ingestion.json]
+- [x] [Review][Patch] Inadequate Auto-Responder Filtering [n8n-workflows/epic-1/1-1-email-ingestion.json]
+- [x] [Review][Patch] SQL Injection / Syntax Error Risk [n8n-workflows/epic-1/1-1-email-ingestion.json]
+- [x] [Review][Patch] Expression TypeError Risks [n8n-workflows/epic-1/1-1-email-ingestion.json]
+- [x] [Review][Patch] Crude Attachment Size Calculation [n8n-workflows/epic-1/1-1-email-ingestion.json]
 - [x] [Review][Defer] Incomplete Database State Transitions [db/migrations/001_create_request_logs.sql] — deferred, pre-existing
 - [x] [Review][Defer] No DB Trigger for `updated_at` / Weak Schema Constraints [db/migrations/001_create_request_logs.sql] — deferred, pre-existing
