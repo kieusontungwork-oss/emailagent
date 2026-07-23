@@ -1,0 +1,19 @@
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: emailagent-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: emailagent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # This automatically runs the initial sql migration on startup
+      - ./db/migrations:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
