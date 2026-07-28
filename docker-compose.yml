@@ -15,5 +15,29 @@ services:
       - ./db/migrations:/docker-entrypoint-initdb.d
     restart: unless-stopped
 
+  n8n:
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    container_name: emailagent-n8n
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=emailagent
+      - DB_POSTGRESDB_USER=admin
+      - DB_POSTGRESDB_PASSWORD=adminpassword
+      - NODES_EXCLUDE=[]
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n-workflows:/home/node/n8n-workflows
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  n8n_data:

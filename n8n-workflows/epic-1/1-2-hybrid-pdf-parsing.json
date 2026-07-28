@@ -1,0 +1,455 @@
+{
+  "name": "1.2 Hybrid PDF Parsing (Text & Scanned)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const execId = $execution.id || 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);\nreturn { json: { workspace: `/tmp/emailagentv2/${execId}` } };"
+      },
+      "id": "init-workspace",
+      "name": "Init Workspace",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 0]
+    },
+    {
+      "parameters": {
+        "command": "=mkdir -p \"{{$json.workspace}}\""
+      },
+      "id": "mkdir",
+      "name": "Create Workspace Dir",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [400, 0]
+    },
+    {
+      "parameters": {
+        "fileName": "={{$json.workspace}}/input.pdf",
+        "dataPropertyName": "attachment_0"
+      },
+      "id": "write-pdf",
+      "name": "Write PDF to Disk",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [600, 0]
+    },
+    {
+      "parameters": {
+        "command": "=pdftk \"{{$json.workspace}}/input.pdf\" burst output \"{{$json.workspace}}/page_%03d.pdf\""
+      },
+      "id": "split-pages",
+      "name": "Split PDF into Pages",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [800, 0]
+    },
+    {
+      "parameters": {
+        "command": "=ls \"{{$json.workspace}}\"/page_*.pdf"
+      },
+      "id": "list-pages",
+      "name": "List Page Files",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1000, 0],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $input.first().json.stdout ? $input.first().json.stdout.trim() : '';\nif (!stdout) return [];\nconst files = stdout.split('\\n').filter(f => f.trim().length > 0);\nconst workspace = $input.first().json.workspace;\nreturn files.map((f, idx) => ({ json: { pagePath: f, pageIndex: idx, workspace } }));"
+      },
+      "id": "split-items",
+      "name": "Create Item Per Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 0]
+    },
+    {
+      "parameters": {
+        "command": "=pdftotext \"{{$json.pagePath}}\" -"
+      },
+      "id": "extract-text",
+      "name": "Extract Text to Check Density",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1400, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "check-density",
+              "leftValue": "={{ ($json.stdout || '').replace(/[\\s\\x00-\\x1F\\x7F]/g, '').length }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-text-heavy",
+      "name": "Is Text-Heavy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1600, 0]
+    },
+    {
+      "parameters": {
+        "command": "=markitdown \"{{$json.pagePath}}\""
+      },
+      "id": "markitdown",
+      "name": "Convert via markitdown",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1800, -100]
+    },
+    {
+      "parameters": {
+        "jsCode": "return { json: { pageIndex: $json.pageIndex, markdown: $json.stdout || '' } };"
+      },
+      "id": "format-text-md",
+      "name": "Format Text MD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, -100]
+    },
+    {
+      "parameters": {
+        "command": "=pdftoppm -jpeg -singlefile \"{{$json.pagePath}}\" \"{{$json.pagePath}}_img\""
+      },
+      "id": "pdf-to-img",
+      "name": "Convert Scanned to Image",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1800, 100]
+    },
+    {
+      "parameters": {
+        "filePath": "={{ $('Create Item Per Page').item.json.pagePath }}_img.jpg",
+        "dataPropertyName": "page_image"
+      },
+      "id": "read-img",
+      "name": "Read Image File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [2000, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'http://' + ($env.LM_STUDIO_HOST || 'lm-studio:1234') + '/v1/chat/completions' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "Llama-3.2-Vision"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [{ role: 'user', content: [ { type: 'text', text: 'Extract all text from this image and format it as Markdown. Do not add any conversational text.' }, { type: 'image_url', image_url: { url: 'data:' + $binary.page_image.mimeType + ';base64,' + $binary.page_image.data } } ] }] }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "vision-llm",
+      "name": "Vision LLM (LM Studio)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2200, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const pageIndex = $('Create Item Per Page').item.json.pageIndex;\nconst content = $json?.choices?.[0]?.message?.content || '[OCR Failed: No content from Vision LLM]';\nreturn { json: { pageIndex, markdown: content } };"
+      },
+      "id": "format-scanned-md",
+      "name": "Format Scanned MD",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2400, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nitems.sort((a, b) => (a.json.pageIndex ?? 0) - (b.json.pageIndex ?? 0));\nreturn items;"
+      },
+      "id": "sort-pages",
+      "name": "Sort Pages by Index",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2500, 0]
+    },
+    {
+      "parameters": {
+        "operation": "concatenateItems",
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "markdown",
+              "renameField": "full_markdown"
+            }
+          ]
+        },
+        "options": {
+          "separator": "\n\n---\n\n"
+        }
+      },
+      "id": "aggregate-md",
+      "name": "Aggregate Markdown",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [2650, 0]
+    },
+    {
+      "parameters": {
+        "command": "=rm -rf \"{{$('Init Workspace').first().json.workspace}}\""
+      },
+      "id": "cleanup",
+      "name": "Cleanup Workspace",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2800, 0],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const markdown = $('Aggregate Markdown').first().json.full_markdown || '';\nreturn { json: { full_markdown: markdown } };"
+      },
+      "id": "return",
+      "name": "Return to Controller",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3000, 0]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Init Workspace",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Workspace": {
+      "main": [
+        [
+          {
+            "node": "Create Workspace Dir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Workspace Dir": {
+      "main": [
+        [
+          {
+            "node": "Write PDF to Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write PDF to Disk": {
+      "main": [
+        [
+          {
+            "node": "Split PDF into Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split PDF into Pages": {
+      "main": [
+        [
+          {
+            "node": "List Page Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Page Files": {
+      "main": [
+        [
+          {
+            "node": "Create Item Per Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Item Per Page": {
+      "main": [
+        [
+          {
+            "node": "Extract Text to Check Density",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text to Check Density": {
+      "main": [
+        [
+          {
+            "node": "Is Text-Heavy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Text-Heavy?": {
+      "main": [
+        [
+          {
+            "node": "Convert via markitdown",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Convert Scanned to Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert via markitdown": {
+      "main": [
+        [
+          {
+            "node": "Format Text MD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert Scanned to Image": {
+      "main": [
+        [
+          {
+            "node": "Read Image File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Image File": {
+      "main": [
+        [
+          {
+            "node": "Vision LLM (LM Studio)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vision LLM (LM Studio)": {
+      "main": [
+        [
+          {
+            "node": "Format Scanned MD",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Text MD": {
+      "main": [
+        [
+          {
+            "node": "Sort Pages by Index",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Scanned MD": {
+      "main": [
+        [
+          {
+            "node": "Sort Pages by Index",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort Pages by Index": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Markdown": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Workspace",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Workspace": {
+      "main": [
+        [
+          {
+            "node": "Return to Controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
