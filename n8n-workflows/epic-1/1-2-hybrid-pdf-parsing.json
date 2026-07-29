@@ -7,17 +7,23 @@
       "name": "Execute Workflow Trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1,
-      "position": [0, 0]
+      "position": [
+        0,
+        0
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const execId = $execution.id || 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);\nreturn { json: { workspace: `/tmp/emailagentv2/${execId}` } };"
+        "jsCode": "const execId = $execution.id || 'dev-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);\nconst workspace = `/tmp/emailagentv2/${execId}`;\nlet binary = $input.first()?.binary;\nif (!binary || !binary.attachment_0) {\n  try {\n    for (const item of $input.all()) {\n      if (item.binary?.attachment_0) { binary = item.binary; break; }\n    }\n  } catch(e) {}\n}\nreturn { json: { workspace }, ...(binary ? { binary } : {}) };"
       },
       "id": "init-workspace",
       "name": "Init Workspace",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [200, 0]
+      "position": [
+        400,
+        0
+      ]
     },
     {
       "parameters": {
@@ -27,7 +33,10 @@
       "name": "Create Workspace Dir",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [400, 0]
+      "position": [
+        600,
+        0
+      ]
     },
     {
       "parameters": {
@@ -38,38 +47,50 @@
       "name": "Write PDF to Disk",
       "type": "n8n-nodes-base.writeBinaryFile",
       "typeVersion": 1,
-      "position": [600, 0]
+      "position": [
+        1000,
+        0
+      ]
     },
     {
       "parameters": {
-        "command": "=pdftk \"{{$json.workspace}}/input.pdf\" burst output \"{{$json.workspace}}/page_%03d.pdf\""
+        "command": "=pdftk \"{{$('Init Workspace').first().json.workspace}}/input.pdf\" burst output \"{{$('Init Workspace').first().json.workspace}}/page_%03d.pdf\""
       },
       "id": "split-pages",
       "name": "Split PDF into Pages",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [800, 0]
+      "position": [
+        800,
+        0
+      ]
     },
     {
       "parameters": {
-        "command": "=ls \"{{$json.workspace}}\"/page_*.pdf"
+        "command": "=ls \"{{$('Init Workspace').first().json.workspace}}\"/page_*.pdf"
       },
       "id": "list-pages",
       "name": "List Page Files",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [1000, 0],
+      "position": [
+        1000,
+        0
+      ],
       "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "const stdout = $input.first().json.stdout ? $input.first().json.stdout.trim() : '';\nif (!stdout) return [];\nconst files = stdout.split('\\n').filter(f => f.trim().length > 0);\nconst workspace = $input.first().json.workspace;\nreturn files.map((f, idx) => ({ json: { pagePath: f, pageIndex: idx, workspace } }));"
+        "jsCode": "const stdout = $input.first().json.stdout ? $input.first().json.stdout.trim() : '';\nif (!stdout) return [];\nconst files = stdout.split('\\n').filter(f => f.trim().length > 0);\nconst workspace = $('Init Workspace').first().json.workspace;\nreturn files.map((f, idx) => ({ json: { pagePath: f, pageIndex: idx, workspace } }));"
       },
       "id": "split-items",
       "name": "Create Item Per Page",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1200, 0]
+      "position": [
+        1200,
+        0
+      ]
     },
     {
       "parameters": {
@@ -79,7 +100,10 @@
       "name": "Extract Text to Check Density",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [1400, 0]
+      "position": [
+        1400,
+        0
+      ]
     },
     {
       "parameters": {
@@ -103,7 +127,10 @@
       "name": "Is Text-Heavy?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [1600, 0]
+      "position": [
+        1600,
+        0
+      ]
     },
     {
       "parameters": {
@@ -113,7 +140,10 @@
       "name": "Convert via markitdown",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [1800, -100]
+      "position": [
+        1800,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -123,7 +153,10 @@
       "name": "Format Text MD",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2000, -100]
+      "position": [
+        2000,
+        -100
+      ]
     },
     {
       "parameters": {
@@ -133,7 +166,10 @@
       "name": "Convert Scanned to Image",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [1800, 100]
+      "position": [
+        1800,
+        100
+      ]
     },
     {
       "parameters": {
@@ -144,7 +180,10 @@
       "name": "Read Image File",
       "type": "n8n-nodes-base.readBinaryFile",
       "typeVersion": 1,
-      "position": [2000, 100]
+      "position": [
+        2000,
+        100
+      ]
     },
     {
       "parameters": {
@@ -180,7 +219,10 @@
       "name": "Vision LLM (LM Studio)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.1,
-      "position": [2200, 100]
+      "position": [
+        2200,
+        100
+      ]
     },
     {
       "parameters": {
@@ -190,7 +232,10 @@
       "name": "Format Scanned MD",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2400, 100]
+      "position": [
+        2400,
+        100
+      ]
     },
     {
       "parameters": {
@@ -200,7 +245,10 @@
       "name": "Sort Pages by Index",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2500, 0]
+      "position": [
+        2500,
+        0
+      ]
     },
     {
       "parameters": {
@@ -221,7 +269,10 @@
       "name": "Aggregate Markdown",
       "type": "n8n-nodes-base.itemLists",
       "typeVersion": 3,
-      "position": [2650, 0]
+      "position": [
+        2650,
+        0
+      ]
     },
     {
       "parameters": {
@@ -231,7 +282,10 @@
       "name": "Cleanup Workspace",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [2800, 0],
+      "position": [
+        2800,
+        0
+      ],
       "continueOnFail": true
     },
     {
@@ -242,7 +296,39 @@
       "name": "Return to Controller",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3000, 0]
+      "position": [
+        3000,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const workspace = $('Init Workspace').first().json.workspace;\nlet binary = $input.first()?.binary;\nlet att = binary?.attachment_0 || binary?.data;\nif (!att) {\n  try {\n    const b = $('Init Workspace').first()?.binary;\n    att = b?.attachment_0 || b?.data;\n  } catch(e) {}\n}\nif (!att) {\n  const candidateNodes = ['Execute Workflow Trigger', 'Read File(s) From Disk', 'Read/Write Files from Disk'];\n  for (const name of candidateNodes) {\n    try {\n      const b = $(name).first()?.binary;\n      if (b?.attachment_0 || b?.data) {\n        att = b.attachment_0 || b.data;\n        break;\n      }\n    } catch(e) {}\n  }\n}\nreturn {\n  json: { workspace },\n  binary: att ? { attachment_0: att } : {}\n};"
+      },
+      "id": "prep-binary",
+      "name": "Prepare Workspace & Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fileSelector": "/home/node/n8n-workflows/CVDEN_001.pdf",
+        "options": {
+          "dataPropertyName": "attachment_0"
+        }
+      },
+      "id": "read-file-test",
+      "name": "Read/Write Files from Disk",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        200,
+        -120
+      ]
     }
   ],
   "connections": {
@@ -250,7 +336,7 @@
       "main": [
         [
           {
-            "node": "Init Workspace",
+            "node": "Read/Write Files from Disk",
             "type": "main",
             "index": 0
           }
@@ -272,7 +358,7 @@
       "main": [
         [
           {
-            "node": "Write PDF to Disk",
+            "node": "Prepare Workspace & Binary",
             "type": "main",
             "index": 0
           }
@@ -445,6 +531,28 @@
         [
           {
             "node": "Return to Controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Workspace & Binary": {
+      "main": [
+        [
+          {
+            "node": "Write PDF to Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Init Workspace",
             "type": "main",
             "index": 0
           }
