@@ -81,7 +81,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const stdout = $input.first().json.stdout ? $input.first().json.stdout.trim() : '';\nif (!stdout) return [];\nconst files = stdout.split('\\n').filter(f => f.trim().length > 0);\nconst workspace = $('Init Workspace').first().json.workspace;\nreturn files.map((f, idx) => ({ json: { pagePath: f, pageIndex: idx, workspace } }));"
+        "jsCode": "const rawStdout = $input.first().json.stdout ? $input.first().json.stdout : '';\nconst stdout = rawStdout.replace(/\\r/g, '').trim();\nif (!stdout) return [];\nconst files = stdout.split('\\n').map(f => f.trim()).filter(f => f.length > 0);\nconst workspace = $('Init Workspace').first().json.workspace;\nreturn files.map((f, idx) => ({ json: { pagePath: f, pageIndex: idx, workspace } }));"
       },
       "id": "split-items",
       "name": "Create Item Per Page",
@@ -108,19 +108,13 @@
     {
       "parameters": {
         "conditions": {
-          "options": {},
-          "conditions": [
+          "number": [
             {
-              "id": "check-density",
-              "leftValue": "={{ ($json.stdout || '').replace(/[\\s\\x00-\\x1F\\x7F]/g, '').length }}",
-              "rightValue": 50,
-              "operator": {
-                "type": "number",
-                "operation": "gte"
-              }
+              "value1": "={{ ($json.stdout || '').replace(/[\\s\\x00-\\x1F\\x7F]/g, '').length }}",
+              "value2": 50,
+              "operation": "gte"
             }
-          ],
-          "combinator": "and"
+          ]
         }
       },
       "id": "if-text-heavy",
