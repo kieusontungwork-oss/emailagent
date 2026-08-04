@@ -31,6 +31,9 @@ services:
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false
       - N8N_RESTRICT_FILE_ACCESS_TO=/home/node/n8n-workflows;/tmp/emailagentv2;/tmp
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - N8N_SECURE_COOKIE=false
     ports:
       - "5678:5678"
     volumes:

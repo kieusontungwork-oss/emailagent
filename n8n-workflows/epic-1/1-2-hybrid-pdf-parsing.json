@@ -112,7 +112,7 @@
             {
               "value1": "={{ ($json.stdout || '').replace(/[\\s\\x00-\\x1F\\x7F]/g, '').length }}",
               "value2": 50,
-              "operation": "gte"
+              "operation": "largerEqual"
             }
           ]
         }
@@ -128,7 +128,7 @@
     },
     {
       "parameters": {
-        "command": "=markitdown \"{{$json.pagePath}}\""
+        "command": "=markitdown \"{{$('Create Item Per Page').item.json.pagePath}}\""
       },
       "id": "markitdown",
       "name": "Convert via markitdown",
@@ -141,7 +141,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return { json: { pageIndex: $json.pageIndex, markdown: $json.stdout || '' } };"
+        "jsCode": "return { json: { pageIndex: $('Create Item Per Page').item.json.pageIndex, markdown: $json.stdout || '' } };"
       },
       "id": "format-text-md",
       "name": "Format Text MD",
@@ -154,7 +154,7 @@
     },
     {
       "parameters": {
-        "command": "=pdftoppm -jpeg -singlefile \"{{$json.pagePath}}\" \"{{$json.pagePath}}_img\""
+        "command": "=pdftoppm -jpeg -singlefile \"{{$('Create Item Per Page').item.json.pagePath}}\" \"{{$('Create Item Per Page').item.json.pagePath}}_img\""
       },
       "id": "pdf-to-img",
       "name": "Convert Scanned to Image",
