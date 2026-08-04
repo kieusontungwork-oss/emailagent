@@ -1,0 +1,48 @@
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: emailagent-postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: emailagent
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # This automatically runs the initial sql migration on startup
+      - ./db/migrations:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+  n8n:
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
+    container_name: emailagent-n8n
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=emailagent
+      - DB_POSTGRESDB_USER=admin
+      - DB_POSTGRESDB_PASSWORD=adminpassword
+      - NODES_EXCLUDE=[]
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false
+      - N8N_RESTRICT_FILE_ACCESS_TO=/home/node/n8n-workflows;/tmp/emailagentv2;/tmp
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - N8N_SECURE_COOKIE=false
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n-workflows:/home/node/n8n-workflows
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  n8n_data:

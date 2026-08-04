@@ -1,0 +1,35 @@
+# Stage 1: Build dependencies into /target
+FROM alpine:3.21 AS builder
+
+# Install python3 in builder host environment
+RUN apk add --no-cache python3 py3-pip
+
+RUN mkdir -p /target/etc/apk && \
+    cp -r /etc/apk/repositories /target/etc/apk/ && \
+    cp -r /etc/apk/keys /target/etc/apk/ && \
+    apk --root /target --initdb --no-cache add \
+        poppler-utils \
+        qpdf \
+        python3 \
+        py3-pip
+
+# Create virtual environment at /opt/venv and copy into /target/opt/venv
+RUN python3 -m venv /opt/venv
+RUN /opt/venv/bin/pip install --no-cache-dir markitdown
+RUN mkdir -p /target/opt && cp -r /opt/venv /target/opt/venv
+
+# Add pdftk compatibility wrapper script with robust argument parsing
+RUN mkdir -p /target/usr/local/bin && \
+    printf '#!/bin/sh\nINPUT="$1"\nshift\nPATTERN=""\nwhile [ "$#" -gt 0 ]; do\n    case "$1" in\n        burst) shift ;;\n        output) [ "$#" -ge 2 ] && PATTERN="$2" && shift 2 || shift ;;\n        *) shift ;;\n    esac\ndone\n[ -z "$PATTERN" ] && PATTERN="$(dirname "$INPUT")/page_%%03d.pdf"\npdfseparate "$INPUT" "$PATTERN"\n' > /target/usr/local/bin/pdftk && chmod +x /target/usr/local/bin/pdftk
+
+# Stage 2: Hardened n8n 2.31.7 image
+FROM n8nio/n8n:2.31.7
+
+USER root
+
+# Copy installed system dependencies and Python venv from builder
+COPY --from=builder /target /
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+USER node
